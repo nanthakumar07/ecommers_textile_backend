@@ -1,38 +1,38 @@
 const mongoose = require("mongoose");
 const dotenv = require("dotenv");
-const bcrypt = require("bcryptjs");
 
 dotenv.config();
 
-const User = require("./models/User");
+const User     = require("./models/User");
 const Category = require("./models/Category");
-const Product = require("./models/Product");
-
+const Product  = require("./models/Product");
 const connectDB = require("./config/db");
+
+// Small helper to pause between operations — prevents TLS connection stress on Windows + Atlas
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const seedData = async () => {
   try {
     await connectDB();
 
-    // Clear existing data and drop stale indexes
+    // ── Clear existing data ──────────────────────────────────────────────────
     await User.deleteMany();
     await Category.deleteMany();
     await Product.deleteMany();
-    // Drop indexes to clean up stale unique constraints from previous failed runs
-    await Category.collection.dropIndexes().catch(() => {});
-
+    await Category.collection.dropIndexes().catch(() => {}); // drop stale unique indexes
     console.log("Cleared existing data...");
+    await sleep(500);
 
-    // Create admin user
+    // ── Users ────────────────────────────────────────────────────────────────
     const admin = await User.create({
       name: "Admin User",
       email: "admin@textilestore.com",
       password: "admin123",
       role: "admin",
     });
+    await sleep(300);
 
-    // Create sample customer
-    const customer = await User.create({
+    await User.create({
       name: "John Doe",
       email: "john@example.com",
       password: "password123",
@@ -50,29 +50,37 @@ const seedData = async () => {
         },
       ],
     });
-
+    await sleep(300);
     console.log("Created users...");
 
-    // Create categories (use .create() so pre-save hook generates slugs)
-    const categories = await Category.create([
-      { name: "Fabrics", description: "Raw fabrics and textiles" },
-      { name: "Garments", description: "Ready-made clothing" },
-      { name: "Accessories", description: "Textile accessories and supplies" },
-      { name: "Home Textiles", description: "Curtains, bed sheets, and more" },
+    // ── Categories (one-by-one so pre-save slug hook fires on each) ──────────
+    const catDefs = [
+      { name: "Fabrics",        description: "Raw fabrics and textiles" },
+      { name: "Garments",       description: "Ready-made clothing" },
+      { name: "Accessories",    description: "Textile accessories and supplies" },
+      { name: "Home Textiles",  description: "Curtains, bed sheets, and more" },
       { name: "Traditional Wear", description: "Sarees, kurtas, and ethnic wear" },
-    ]);
+    ];
 
+    const categories = [];
+    for (const def of catDefs) {
+      const cat = await Category.create(def);
+      categories.push(cat);
+      await sleep(300); // pause between each insert
+    }
     console.log("Created categories...");
 
-    // Create sample products (use .create() to trigger any middleware)
-    const products = await Product.create([
+    // ── Products (one-by-one) ────────────────────────────────────────────────
+    const [fabrics, , , homeTextiles, traditionalWear] = categories;
+
+    const productDefs = [
       {
         name: "Premium Cotton Fabric - White",
         description:
           "High-quality 100% pure cotton fabric perfect for summer wear. Soft, breathable, and comfortable. Ideal for shirts, dresses, and casual wear.",
         price: 450,
         discountPrice: 399,
-        category: categories[0]._id,
+        category: fabrics._id,
         fabricType: "Cotton",
         gsm: 120,
         color: "White",
@@ -90,7 +98,7 @@ const seedData = async () => {
           "Exquisite handwoven Banarasi silk with intricate gold zari work. Perfect for sarees, lehengas, and wedding attire. Rich texture and vibrant color.",
         price: 2500,
         discountPrice: 2199,
-        category: categories[4]._id,
+        category: traditionalWear._id,
         fabricType: "Silk",
         gsm: 80,
         color: "Royal Blue",
@@ -107,7 +115,7 @@ const seedData = async () => {
         description:
           "Premium quality denim fabric with classic indigo wash finish. 12oz weight, perfect for jeans, jackets, and denim wear. Pre-shrunk and fade-resistant.",
         price: 750,
-        category: categories[0]._id,
+        category: fabrics._id,
         fabricType: "Denim",
         gsm: 340,
         color: "Indigo",
@@ -125,7 +133,7 @@ const seedData = async () => {
           "Premium European linen fabric in natural beige. Lightweight, breathable, and perfect for summer clothing and home textiles. Gets softer with each wash.",
         price: 850,
         discountPrice: 749,
-        category: categories[0]._id,
+        category: fabrics._id,
         fabricType: "Linen",
         gsm: 150,
         color: "Beige",
@@ -142,7 +150,7 @@ const seedData = async () => {
         description:
           "Elegant chiffon fabric with beautiful floral prints. Lightweight and flowing, ideal for sarees, dupattas, scarves, and evening wear.",
         price: 550,
-        category: categories[0]._id,
+        category: fabrics._id,
         fabricType: "Chiffon",
         gsm: 40,
         color: "Multicolor",
@@ -159,7 +167,7 @@ const seedData = async () => {
           "Luxurious crushed velvet fabric in deep emerald green. Rich texture with beautiful sheen. Perfect for upholstery, curtains, and evening wear.",
         price: 1200,
         discountPrice: 999,
-        category: categories[3]._id,
+        category: homeTextiles._id,
         fabricType: "Velvet",
         gsm: 280,
         color: "Emerald Green",
@@ -176,7 +184,7 @@ const seedData = async () => {
         description:
           "Soft and flowing georgette fabric in elegant peach shade. Slightly textured surface with beautiful drape. Ideal for sarees, gowns, and party wear.",
         price: 480,
-        category: categories[0]._id,
+        category: fabrics._id,
         fabricType: "Georgette",
         gsm: 60,
         color: "Peach",
@@ -193,7 +201,7 @@ const seedData = async () => {
           "King-size cotton bed sheet set with traditional paisley print. Includes 1 flat sheet and 2 pillow covers. 300 thread count, machine washable.",
         price: 1800,
         discountPrice: 1499,
-        category: categories[3]._id,
+        category: homeTextiles._id,
         fabricType: "Cotton",
         gsm: 200,
         color: "Blue",
@@ -205,18 +213,28 @@ const seedData = async () => {
         tags: ["bedsheet", "cotton", "home", "paisley"],
         vendor: admin._id,
       },
-    ]);
+    ];
 
+    const products = [];
+    for (const def of productDefs) {
+      const product = await Product.create(def);
+      products.push(product);
+      await sleep(300); // pause between each insert
+    }
     console.log("Created products...");
-    console.log("\n--- Seed Complete ---");
-    console.log(`Admin Login:  admin@textilestore.com / admin123`);
-    console.log(`Customer Login: john@example.com / password123`);
-    console.log(`Categories: ${categories.length}`);
-    console.log(`Products: ${products.length}`);
+
+    console.log("\n========================================");
+    console.log("  ✅  Seed Complete — MongoDB Atlas");
+    console.log("========================================");
+    console.log(`Admin Login  : admin@textilestore.com / admin123`);
+    console.log(`Customer     : john@example.com / password123`);
+    console.log(`Categories   : ${categories.length}`);
+    console.log(`Products     : ${products.length}`);
+    console.log("========================================\n");
 
     process.exit(0);
   } catch (error) {
-    console.error("Seed Error:", error);
+    console.error("Seed Error:", error.message || error);
     process.exit(1);
   }
 };
