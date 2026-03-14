@@ -21,7 +21,8 @@ app.use(cookieParser());
 const allowedOrigins = [
   "http://localhost:5173",                           // local Vite dev
   "http://localhost:4173",                           // vite preview
-  process.env.FRONTEND_URL,                         // e.g. https://your-app.netlify.app
+  "https://aadhavtrend.netlify.app",                 // Netlify production
+  process.env.FRONTEND_URL,                         // extra override via env var
 ].filter(Boolean);
 
 app.use(
@@ -30,7 +31,8 @@ app.use(
       // allow requests with no origin (mobile apps, curl, Postman)
       if (!origin) return callback(null, true);
       if (allowedOrigins.includes(origin)) return callback(null, true);
-      callback(new Error(`CORS blocked: ${origin}`));
+      // return 403, not 500 — never throw inside cors callback
+      callback(null, false);
     },
     credentials: true,
   })
